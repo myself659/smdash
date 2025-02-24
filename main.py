@@ -7,6 +7,7 @@ import logging
 from collections import deque
 from datetime import datetime
 import sys
+import gpustat
 
 # Set up basic logging to debug
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +20,7 @@ history = {
     'ram': deque(maxlen=20),
     'cpu': deque(maxlen=20),
     'disk': deque(maxlen=20),
+    'gpu': deque(maxlen=20),  #
     'time': deque(maxlen=20)  # Store timestamps for x-axis
 }
 
@@ -35,11 +37,16 @@ def get_system_stats():
         # Get Disk usage
         disk = psutil.disk_usage('/').percent
 
+         # Get GPU usage
+        gpu_stats = gpustat.new_query()
+        gpu = gpu_stats.gpus[0].utilization if gpu_stats.gpus else 0  # Get first GPU utilization
+
         # Return RAM, CPU, and Disk data
         return {
             'RAM Usage (%)': ram,
             'CPU Usage (%)': cpu,
-            'Disk Usage (%)': disk
+            'Disk Usage (%)': disk,
+            'GPU Usage (%)': gpu
         }
     except Exception as e:
         logging.error(f"Error fetching system stats: {e}")
@@ -84,6 +91,7 @@ if mode == 'one':
         history['ram'].append(data['RAM Usage (%)'])
         history['cpu'].append(data['CPU Usage (%)'])
         history['disk'].append(data['Disk Usage (%)'])
+        history['gpu'].append(data['GPU Usage (%)'])  # Add GPU data
         history['time'].append(current_time)
 
         # Create Combined Line Chart
@@ -106,10 +114,16 @@ if mode == 'one':
                     y=list(history['disk']),
                     mode='lines+markers',
                     name='Disk Usage (%)'
+                ),
+                 go.Scatter(
+                    x=list(history['time']),
+                    y=list(history['gpu']),
+                    mode='lines+markers',
+                    name='GPU Usage (%)'
                 )
             ],
             'layout': go.Layout(
-                title='RAM, CPU, and Disk Usage Over Time',
+                title='RAM, CPU, Disk and GPU Usage Over Time',
                 xaxis=dict(title='Time', tickformat='%H:%M:%S'),  # Format the time
                 yaxis=dict(title='Percentage'),
             )
@@ -131,6 +145,8 @@ else:
         # Disk Usage Line Chart
         dcc.Graph(id='disk-usage-graph'),
 
+        dcc.Graph(id='gpu-usage-graph'),
+
         # Interval for updating the dashboard every 5 seconds
         dcc.Interval(
             id='interval-component',
@@ -143,7 +159,8 @@ else:
     @app.callback(
         [Output('ram-usage-graph', 'figure'),
          Output('cpu-usage-graph', 'figure'),
-         Output('disk-usage-graph', 'figure')],
+         Output('disk-usage-graph', 'figure'),
+         Output('gpu-usage-graph', 'figure')],
         [Input('interval-component', 'n_intervals')]
     )
     def update_separate_graphs(n):
@@ -162,6 +179,7 @@ else:
         history['ram'].append(data['RAM Usage (%)'])
         history['cpu'].append(data['CPU Usage (%)'])
         history['disk'].append(data['Disk Usage (%)'])
+        history['gpu'].append(data['GPU Usage (%)'])
         history['time'].append(current_time)
 
         # Create RAM Usage Line Chart
@@ -209,7 +227,22 @@ else:
             )
         }
 
-        return ram_figure, cpu_figure, disk_figure
+        # Create GPU Usage Line Chart
+        gpu_figure = {
+            'data': [go.Scatter(
+                x=list(history['time']),
+                y=list(history['gpu']),
+                mode='lines+markers',
+                name='GPU Usage (%)'
+            )],
+            'layout': go.Layout(
+                title='GPU Usage Over Time',
+                xaxis=dict(title='Time', tickformat='%H:%M:%S'),
+                yaxis=dict(title='Percentage'),
+            )
+        }
+
+        return ram_figure, cpu_figure, disk_figure, gpu_figure
 
 # Run the app
 if __name__ == '__main__':
